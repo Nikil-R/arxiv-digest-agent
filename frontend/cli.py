@@ -6,7 +6,7 @@ Adheres strictly to the assessment constraints:
 """
 import sys
 import argparse
-from backend.agent import run_digest_pipeline, initialize_state
+from backend.agent import run_digest_pipeline
 
 def main():
     parser = argparse.ArgumentParser(
@@ -19,30 +19,53 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["llm", "mock"],
-        default="mock",
-        help="Pipeline mode: 'llm' for AI generation, 'mock' for offline deterministic test (default: mock)"
+        choices=["groq", "gemini", "mock"],
+        default="groq",
+        help="Pipeline mode: 'groq' (primary), 'gemini' (fallback), 'mock' (offline) (default: groq)"
     )
 
     args = parser.parse_args()
 
-    print("=" * 70)
-    print("      Autonomous arXiv Paper Digest & QA Agent")
-    print("=" * 70)
+    print("=" * 75)
+    print("         Autonomous arXiv Paper Digest & QA Agent (8byte)")
+    print("=" * 75)
 
     query = args.query
     if not query:
         query = input("\nEnter research topic or arXiv ID/URL: ").strip()
 
     if not query:
-        print("Error: No query provided. Exiting.")
+        print("[-] Error: No query provided. Exiting.")
         sys.exit(1)
 
-    print(f"\n[+] Executing backend in mode: {args.mode.upper()}")
-    print(f"[+] Query: {query}")
+    print(f"\n[+] Input Query: {query}")
+    print(f"[+] Active LLM Mode: {args.mode.upper()}")
+    print("[*] Running State Graph: [Query Understanding] -> [arXiv Retrieval]...")
 
     state = run_digest_pipeline(query, mode=args.mode)
-    print(f"[+] Pipeline status: {state['status']}")
+
+    if state.get("status") == "error":
+        print(f"\n[-] Pipeline Error: {state.get('error_message')}")
+        sys.exit(1)
+
+    paper = state.get("selected_paper")
+    if paper:
+        print("\n" + "-" * 75)
+        print("                  SELECTED PAPER DETAILS")
+        print("-" * 75)
+        print(f"Title:         {paper.get('title')}")
+        print(f"Authors:       {', '.join(paper.get('authors', []))}")
+        print(f"arXiv ID:      {paper.get('arxiv_id')}")
+        print(f"Published:     {paper.get('published')}")
+        print(f"Primary Cat:   {paper.get('primary_category')}")
+        print(f"PDF Link:      {paper.get('pdf_url')}")
+        if "relevance_score" in paper:
+            print(f"Rank Score:    {paper.get('relevance_score')} (ranked top among candidates)")
+        print(f"\nAbstract:\n{paper.get('abstract')[:350]}...")
+        print("-" * 75)
+        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for PDF Parsing)")
+    else:
+        print("\n[-] No paper selected.")
 
 if __name__ == "__main__":
     main()
