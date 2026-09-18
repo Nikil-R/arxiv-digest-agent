@@ -12,7 +12,7 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-from backend.agent import run_digest_pipeline
+from backend.agent import run_digest_pipeline, ask_question_state
 
 def main():
     parser = argparse.ArgumentParser(
@@ -46,7 +46,7 @@ def main():
 
     print(f"\n[+] Input Query: {query}")
     print(f"[+] Active LLM Mode: {args.mode.upper()}")
-    print("[*] Running State Graph: [Query] -> [arXiv] -> [PDF Parse] -> [Chunk & Embed]...")
+    print("[*] Running State Graph: [Query] -> [arXiv] -> [PDF Parse] -> [Index] -> [Briefing]...")
 
     state = run_digest_pipeline(query, mode=args.mode)
 
@@ -55,34 +55,55 @@ def main():
         sys.exit(1)
 
     paper = state.get("selected_paper")
-    if paper:
-        print("\n" + "-" * 75)
-        print("                  SELECTED PAPER DETAILS")
-        print("-" * 75)
-        print(f"Title:         {paper.get('title')}")
-        print(f"Authors:       {', '.join(paper.get('authors', []))}")
-        print(f"arXiv ID:      {paper.get('arxiv_id')}")
-        print(f"Published:     {paper.get('published')}")
-        print(f"Primary Cat:   {paper.get('primary_category')}")
-        print(f"PDF Link:      {paper.get('pdf_url')}")
-        if "relevance_score" in paper:
-            print(f"Rank Score:    {paper.get('relevance_score')} (ranked top among candidates)")
-        
-        print("\n" + "-" * 75)
-        print("             PDF EXTRACTION & VECTOR INDEX SUMMARY")
-        print("-" * 75)
-        print(f"Local PDF:     {state.get('pdf_path')}")
-        print(f"Parse Status:  {state.get('parsing_status').upper()}")
-        print(f"Vector Store:  ChromaDB (Local persistent: {state.get('index_id')})")
-        print(f"Chunks Count:  {len(state.get('chunks', []))} chunks indexed")
-        print(f"Retrieval OK:  {state.get('retrieval_available')}")
-        if state.get("fallback_reason"):
-            print(f"Note:          {state.get('fallback_reason')}")
-                
-        print("-" * 75)
-        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for Briefing & QA)")
-    else:
-        print("\n[-] No paper selected.")
+    briefing = state.get("executive_briefing")
+
+    if not paper or not briefing:
+        print("\n[-] Pipeline did not yield a valid executive briefing.")
+        sys.exit(1)
+
+    meta = briefing.get("metadata", {})
+    print("\n" + "=" * 75)
+    print("                   STRUCTURED EXECUTIVE BRIEFING")
+    print("=" * 75)
+    print(f"Title:        {meta.get('title')}")
+    print(f"Authors:      {meta.get('authors')}")
+    print(f"arXiv ID:     {meta.get('arxiv_id')}")
+    print(f"Published:    {meta.get('published')}")
+    print(f"PDF Link:     {meta.get('pdf_url')}")
+    print("-" * 75)
+    print(briefing.get("content_markdown"))
+    print("=" * 75)
+
+    # Stage 7: Interactive QA Loop
+    print("\n[+] Entering Grounded QA Mode. Type your questions below (or 'exit' to quit):")
+    if not state.get("retrieval_available", False):
+        print("    [Notice: Answering solely from abstract/metadata due to PDF fallback]")
+
+    while True:
+        try:
+            print()
+            user_question = input("Ask a question about this paper: ").strip()
+            if not user_question:
+                continue
+            if user_question.lower() in ["exit", "quit", "q"]:
+                print("\n[+] Exiting QA session. Goodbye!")
+                break
+
+            print("[*] Retrieving evidence chunks and generating grounded response...")
+            state = ask_question_state(state, user_question)
+
+            last_turn = state.get("qa_history", [])[-1]
+            print("\n" + "-" * 50 + " ANSWER " + "-" * 50)
+            print(last_turn.get("answer"))
+            print("-" * 108)
+
+            evidence = last_turn.get("evidence", [])
+            if evidence:
+                print(f"[Sources: {len(evidence)} evidence chunks retrieved from vector store]")
+
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n[+] Session ended.")
+            break
 
 if __name__ == "__main__":
     main()

@@ -5,6 +5,8 @@ Implements individual stateful node transformations:
 - Node 2: arxiv_retrieval_node
 - Node 3: pdf_fetch_parse_node
 - Node 4: chunk_and_embed_node
+- Node 5: summarize_node
+- Node 6: qa_node
 """
 
 from typing import Dict, Any
@@ -23,12 +25,11 @@ from backend.tools.vector_store import (
     build_chunks_from_sections,
     index_paper_chunks
 )
+from backend.tools.briefing_generator import generate_executive_briefing
+from backend.tools.qa_engine import answer_paper_question
 
 def query_understanding_node(state: AgentState) -> AgentState:
-    """
-    Stage 1: Query Understanding.
-    Parses intent: topic search vs. specific paper lookup.
-    """
+    """Stage 1: Query Understanding."""
     raw_query = state.get("raw_query", "").strip()
     detected_id = extract_arxiv_id(raw_query)
 
@@ -51,12 +52,7 @@ def query_understanding_node(state: AgentState) -> AgentState:
 
 
 def arxiv_retrieval_node(state: AgentState) -> AgentState:
-    """
-    Stage 2 & 3: arXiv Retrieval and Selection/Ranking.
-    - If paper_id: Directly fetches paper metadata via official API.
-    - If topic: Searches arXiv API, ranks results, and selects the top candidate.
-    - Gracefully handles realistic failure cases: 0 results or invalid ID.
-    """
+    """Stage 2 & 3: arXiv Retrieval and Selection/Ranking."""
     query_type = state.get("query_type", "topic")
 
     try:
@@ -112,11 +108,7 @@ def arxiv_retrieval_node(state: AgentState) -> AgentState:
 
 
 def pdf_fetch_parse_node(state: AgentState) -> AgentState:
-    """
-    Stage 4: Fetch & Parse PDF.
-    Downloads the paper PDF and extracts structured sections page-by-page.
-    Gracefully handles realistic failures (network failure, scanned/unparseable PDF).
-    """
+    """Stage 4: Fetch & Parse PDF."""
     paper = state.get("selected_paper")
     if not paper:
         return {
@@ -173,17 +165,10 @@ def pdf_fetch_parse_node(state: AgentState) -> AgentState:
 
 
 def chunk_and_embed_node(state: AgentState) -> AgentState:
-    """
-    Stage 5: Chunk & Embed in Local Vector DB.
-    - If retrieval_available is True: chunks parsed sections with metadata (section, page)
-      and indexes them into local ChromaDB.
-    - If retrieval_available is False (scanned or failed PDF): sets empty chunks,
-      preserves fallback state, and routes smoothly to summarization.
-    """
+    """Stage 5: Chunk & Embed in Local Vector DB."""
     paper = state.get("selected_paper")
     paper_id = paper.get("arxiv_id", "default_paper") if paper else "default_paper"
 
-    # If parsing fell back to abstract-only, skip vector indexing gracefully
     if not state.get("retrieval_available", False):
         return {
             "chunks": [],
@@ -201,10 +186,8 @@ def chunk_and_embed_node(state: AgentState) -> AgentState:
             "status": "summarizing"
         }
 
-    # Build chunks with section and page metadata
     chunks = build_chunks_from_sections(sections, paper_id=paper_id)
 
-    # Store into local ChromaDB
     try:
         index_id = index_paper_chunks(chunks, paper_id=paper_id)
         return {
@@ -215,7 +198,6 @@ def chunk_and_embed_node(state: AgentState) -> AgentState:
             "error_message": None
         }
     except Exception as exc:
-        # If ChromaDB fails for any reason, degrade gracefully without crashing
         return {
             "chunks": chunks,
             "index_id": None,
@@ -223,3 +205,70 @@ def chunk_and_embed_node(state: AgentState) -> AgentState:
             "fallback_reason": f"Vector indexing fallback: {str(exc)}",
             "status": "summarizing"
         }
+
+
+def summarize_node(state: AgentState) -> AgentState:
+    """
+    Stage 6: Executive Briefing Generation.
+    Produces structured briefing matching rubric with all mandatory sections.
+    """
+    paper = state.get("selected_paper")
+    if not paper:
+        return {
+            "status": "error",
+            "error_message": "Cannot generate briefing: No paper selected."
+        }
+
+    sections = state.get("parsed_sections", [])
+    mode = state.get("mode", "groq")
+
+    try:
+        briefing = generate_executive_briefing(paper, sections, mode=mode)
+        return {
+            "executive_briefing": briefing,
+            "status": "qa_ready",
+            "error_message": None
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error_message": f"Executive briefing generation failed: {str(exc)}"
+        }
+
+
+def qa_node(state: AgentState) -> AgentState:
+    """
+    Stage 7: Grounded Question-Answering.
+    Answers state['current_question'] using retrieved chunks and records into qa_history.
+    """
+    question = state.get("current_question")
+    paper = state.get("selected_paper")
+    if not question or not paper:
+        return {
+            "status": "error",
+            "error_message": "Question or paper missing in QA state."
+        }
+
+    retrieval_available = state.get("retrieval_available", False)
+    mode = state.get("mode", "groq")
+
+    answer_text, evidence = answer_paper_question(
+        question=question,
+        paper=paper,
+        retrieval_available=retrieval_available,
+        mode=mode
+    )
+
+    history = list(state.get("qa_history", []))
+    history.append({
+        "question": question,
+        "answer": answer_text,
+        "evidence": evidence
+    })
+
+    return {
+        "qa_history": history,
+        "retrieved_chunks": evidence,
+        "status": "qa_ready",
+        "error_message": None
+    }

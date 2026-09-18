@@ -55,17 +55,17 @@ def test_failure_handling_nonexistent_id():
 
 def test_pipeline_graph_paper_id_flow():
     """Test full state graph execution with a paper ID."""
-    state = run_digest_pipeline("1706.03762")
+    state = run_digest_pipeline("1706.03762", mode="mock")
     assert state["query_type"] == "paper_id"
     assert state["selected_paper"] is not None
     assert "Attention Is All You Need" in state["selected_paper"]["title"]
-    assert state["status"] in ["parsing", "indexing", "summarizing"]
+    assert state["status"] in ["parsing", "indexing", "summarizing", "qa_ready"]
     assert state["error_message"] is None
 
 
 def test_pipeline_graph_nonexistent_query():
     """Test realistic failure handling when query returns zero papers."""
-    state = run_digest_pipeline("zyxwvutsrqpnonexistentquery9876543210")
+    state = run_digest_pipeline("zyxwvutsrqpnonexistentquery9876543210", mode="mock")
     assert state["query_type"] == "topic"
     assert state["status"] == "error"
     assert state["selected_paper"] is None

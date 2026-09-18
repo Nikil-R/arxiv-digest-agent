@@ -52,16 +52,15 @@ def test_live_pdf_download_and_parse():
     assert len(sections) > 0
     assert len(full_text) > 5000
 
-    # Verify key sections exist
     section_titles = [s["title"].lower() for s in sections]
     assert any("introduction" in t for t in section_titles)
     assert any("reference" in t or "model" in t or "conclusion" in t for t in section_titles)
 
 
 def test_pipeline_graph_with_pdf_parsing():
-    """Verify the state graph executes through Query -> arXiv -> PDF Parsing -> Indexing."""
-    state = run_digest_pipeline("1706.03762")
-    assert state["status"] in ["indexing", "summarizing"]
+    """Verify the state graph executes through Query -> arXiv -> PDF Parsing -> Briefing."""
+    state = run_digest_pipeline("1706.03762", mode="mock")
+    assert state["status"] in ["indexing", "summarizing", "qa_ready"]
     assert state["retrieval_available"] is True
     assert state["parsing_status"] == "success"
     assert state["pdf_path"] is not None
