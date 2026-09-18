@@ -5,7 +5,14 @@ Adheres strictly to the assessment constraints:
  A CLI or simple script-based interaction is completely fine.'
 """
 import sys
+import io
 import argparse
+
+# Ensure standard output can safely display Unicode scientific symbols on Windows consoles
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 from backend.agent import run_digest_pipeline
 
 def main():
@@ -40,7 +47,7 @@ def main():
 
     print(f"\n[+] Input Query: {query}")
     print(f"[+] Active LLM Mode: {args.mode.upper()}")
-    print("[*] Running State Graph: [Query Understanding] -> [arXiv Retrieval]...")
+    print("[*] Running State Graph: [Query Understanding] -> [arXiv Retrieval] -> [PDF Fetch & Parse]...")
 
     state = run_digest_pipeline(query, mode=args.mode)
 
@@ -61,9 +68,26 @@ def main():
         print(f"PDF Link:      {paper.get('pdf_url')}")
         if "relevance_score" in paper:
             print(f"Rank Score:    {paper.get('relevance_score')} (ranked top among candidates)")
-        print(f"\nAbstract:\n{paper.get('abstract')[:350]}...")
+        
+        print("\n" + "-" * 75)
+        print("                  PDF EXTRACTION SUMMARY")
         print("-" * 75)
-        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for PDF Parsing)")
+        print(f"Local PDF:     {state.get('pdf_path')}")
+        print(f"Parse Status:  {state.get('parsing_status').upper()}")
+        print(f"Retrieval OK:  {state.get('retrieval_available')}")
+        if state.get("fallback_reason"):
+            print(f"Note:          {state.get('fallback_reason')}")
+        
+        sections = state.get("parsed_sections", [])
+        print(f"Extracted:     {len(sections)} sections/blocks detected")
+        if sections:
+            print("\nSample Extracted Sections:")
+            for s in sections[:4]:
+                snippet = s['text'][:90].replace('\n', ' ')
+                print(f"  - [{s['title']}] (Page {s['page']}): \"{snippet}...\"")
+                
+        print("-" * 75)
+        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for Chunking & Embedding)")
     else:
         print("\n[-] No paper selected.")
 

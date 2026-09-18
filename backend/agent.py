@@ -9,7 +9,8 @@ from backend.config import LLM_PROVIDER
 from backend.graph.engine import StateGraph
 from backend.graph.nodes import (
     query_understanding_node,
-    arxiv_retrieval_node
+    arxiv_retrieval_node,
+    pdf_fetch_parse_node
 )
 
 def create_digest_graph() -> StateGraph:
@@ -19,19 +20,22 @@ def create_digest_graph() -> StateGraph:
     # Register Nodes
     graph.add_node("query_understanding", query_understanding_node)
     graph.add_node("arxiv_retrieval", arxiv_retrieval_node)
+    graph.add_node("pdf_fetch_parse", pdf_fetch_parse_node)
 
     # Define Graph Transitions
     graph.set_entry_point("query_understanding")
     graph.add_edge("query_understanding", "arxiv_retrieval")
 
-    # Conditional check: if retrieval failed, go to END
+    # Routing from retrieval: if error -> END, else -> pdf_fetch_parse
     def check_retrieval_status(state: AgentState) -> str:
         if state.get("status") == "error":
             return "END"
-        # In future milestones, next node is "pdf_parsing"
-        return "END"
+        return "pdf_fetch_parse"
 
     graph.add_conditional_edge("arxiv_retrieval", check_retrieval_status)
+
+    # In future milestones, next node is "chunk_and_embed"
+    graph.add_edge("pdf_fetch_parse", "END")
 
     return graph
 
@@ -50,7 +54,9 @@ def initialize_state(query: str, mode: Optional[str] = None) -> AgentState:
         "status": "init",
         "current_node": "",
         "mode": mode or LLM_PROVIDER,
-        "error_message": None
+        "error_message": None,
+        "parsing_status": "success",
+        "fallback_reason": None
     }
 
 
@@ -60,8 +66,8 @@ def run_digest_pipeline(
     on_step: Optional[Callable[[str, AgentState], None]] = None
 ) -> AgentState:
     """
-    Executes the autonomous agent graph for a query.
-    Returns the final state containing metadata, candidate papers, and status.
+    Executes the autonomous agent graph for a query up to PDF parsing.
+    Returns the final state containing paper metadata, parsed sections, and status.
     """
     graph = create_digest_graph()
     runner = graph.compile()
