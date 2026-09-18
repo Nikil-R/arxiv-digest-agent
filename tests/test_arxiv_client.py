@@ -59,7 +59,7 @@ def test_pipeline_graph_paper_id_flow():
     assert state["query_type"] == "paper_id"
     assert state["selected_paper"] is not None
     assert "Attention Is All You Need" in state["selected_paper"]["title"]
-    assert state["status"] in ["parsing", "indexing"]
+    assert state["status"] in ["parsing", "indexing", "summarizing"]
     assert state["error_message"] is None
 
 

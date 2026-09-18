@@ -8,7 +8,6 @@ import sys
 import io
 import argparse
 
-# Ensure standard output can safely display Unicode scientific symbols on Windows consoles
 if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
@@ -47,7 +46,7 @@ def main():
 
     print(f"\n[+] Input Query: {query}")
     print(f"[+] Active LLM Mode: {args.mode.upper()}")
-    print("[*] Running State Graph: [Query Understanding] -> [arXiv Retrieval] -> [PDF Fetch & Parse]...")
+    print("[*] Running State Graph: [Query] -> [arXiv] -> [PDF Parse] -> [Chunk & Embed]...")
 
     state = run_digest_pipeline(query, mode=args.mode)
 
@@ -70,24 +69,18 @@ def main():
             print(f"Rank Score:    {paper.get('relevance_score')} (ranked top among candidates)")
         
         print("\n" + "-" * 75)
-        print("                  PDF EXTRACTION SUMMARY")
+        print("             PDF EXTRACTION & VECTOR INDEX SUMMARY")
         print("-" * 75)
         print(f"Local PDF:     {state.get('pdf_path')}")
         print(f"Parse Status:  {state.get('parsing_status').upper()}")
+        print(f"Vector Store:  ChromaDB (Local persistent: {state.get('index_id')})")
+        print(f"Chunks Count:  {len(state.get('chunks', []))} chunks indexed")
         print(f"Retrieval OK:  {state.get('retrieval_available')}")
         if state.get("fallback_reason"):
             print(f"Note:          {state.get('fallback_reason')}")
-        
-        sections = state.get("parsed_sections", [])
-        print(f"Extracted:     {len(sections)} sections/blocks detected")
-        if sections:
-            print("\nSample Extracted Sections:")
-            for s in sections[:4]:
-                snippet = s['text'][:90].replace('\n', ' ')
-                print(f"  - [{s['title']}] (Page {s['page']}): \"{snippet}...\"")
                 
         print("-" * 75)
-        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for Chunking & Embedding)")
+        print(f"[+] Pipeline status: {state.get('status').upper()} (Ready for Briefing & QA)")
     else:
         print("\n[-] No paper selected.")
 

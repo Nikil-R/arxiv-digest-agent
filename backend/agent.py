@@ -10,7 +10,8 @@ from backend.graph.engine import StateGraph
 from backend.graph.nodes import (
     query_understanding_node,
     arxiv_retrieval_node,
-    pdf_fetch_parse_node
+    pdf_fetch_parse_node,
+    chunk_and_embed_node
 )
 
 def create_digest_graph() -> StateGraph:
@@ -21,6 +22,7 @@ def create_digest_graph() -> StateGraph:
     graph.add_node("query_understanding", query_understanding_node)
     graph.add_node("arxiv_retrieval", arxiv_retrieval_node)
     graph.add_node("pdf_fetch_parse", pdf_fetch_parse_node)
+    graph.add_node("chunk_and_embed", chunk_and_embed_node)
 
     # Define Graph Transitions
     graph.set_entry_point("query_understanding")
@@ -34,8 +36,11 @@ def create_digest_graph() -> StateGraph:
 
     graph.add_conditional_edge("arxiv_retrieval", check_retrieval_status)
 
-    # In future milestones, next node is "chunk_and_embed"
-    graph.add_edge("pdf_fetch_parse", "END")
+    # Transition from PDF parsing to chunk & embed
+    graph.add_edge("pdf_fetch_parse", "chunk_and_embed")
+
+    # In Milestone 5, next node is "summarize"
+    graph.add_edge("chunk_and_embed", "END")
 
     return graph
 
@@ -56,7 +61,8 @@ def initialize_state(query: str, mode: Optional[str] = None) -> AgentState:
         "mode": mode or LLM_PROVIDER,
         "error_message": None,
         "parsing_status": "success",
-        "fallback_reason": None
+        "fallback_reason": None,
+        "index_id": None
     }
 
 
@@ -66,8 +72,8 @@ def run_digest_pipeline(
     on_step: Optional[Callable[[str, AgentState], None]] = None
 ) -> AgentState:
     """
-    Executes the autonomous agent graph for a query up to PDF parsing.
-    Returns the final state containing paper metadata, parsed sections, and status.
+    Executes the autonomous agent graph for a query up to vector indexing.
+    Returns the final state containing paper metadata, chunks, and index_id.
     """
     graph = create_digest_graph()
     runner = graph.compile()

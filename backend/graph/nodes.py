@@ -4,6 +4,7 @@ Implements individual stateful node transformations:
 - Node 1: query_understanding_node
 - Node 2: arxiv_retrieval_node
 - Node 3: pdf_fetch_parse_node
+- Node 4: chunk_and_embed_node
 """
 
 from typing import Dict, Any
@@ -17,6 +18,10 @@ from backend.tools.arxiv_client import (
 from backend.tools.pdf_parser import (
     download_pdf,
     extract_sections_from_pdf
+)
+from backend.tools.vector_store import (
+    build_chunks_from_sections,
+    index_paper_chunks
 )
 
 def query_understanding_node(state: AgentState) -> AgentState:
@@ -80,7 +85,6 @@ def arxiv_retrieval_node(state: AgentState) -> AgentState:
             }
 
         else:
-            # Topic search
             topic = state.get("search_keywords", state.get("raw_query", ""))
             candidates, selected = search_papers_by_topic(topic, max_results=5)
 
@@ -111,8 +115,7 @@ def pdf_fetch_parse_node(state: AgentState) -> AgentState:
     """
     Stage 4: Fetch & Parse PDF.
     Downloads the paper PDF and extracts structured sections page-by-page.
-    Gracefully handles realistic failures (network failure, scanned/unparseable PDF)
-    by falling back to abstract-only mode and alerting downstream QA.
+    Gracefully handles realistic failures (network failure, scanned/unparseable PDF).
     """
     paper = state.get("selected_paper")
     if not paper:
@@ -133,15 +136,10 @@ def pdf_fetch_parse_node(state: AgentState) -> AgentState:
         }
 
     try:
-        # Download with local caching
         pdf_path = download_pdf(pdf_url, arxiv_id)
-
-        # Extract structured sections
         sections, full_text, success, reason = extract_sections_from_pdf(pdf_path)
 
         if not success:
-            # Realistic Failure Handling: Scanned or empty PDF
-            # Fall back gracefully to abstract without halting pipeline
             return {
                 "pdf_path": str(pdf_path),
                 "parsed_sections": [],
@@ -163,7 +161,6 @@ def pdf_fetch_parse_node(state: AgentState) -> AgentState:
         }
 
     except Exception as exc:
-        # Graceful fallback on network or download exceptions
         return {
             "pdf_path": None,
             "parsed_sections": [],
@@ -172,4 +169,57 @@ def pdf_fetch_parse_node(state: AgentState) -> AgentState:
             "fallback_reason": f"PDF download or read error: {str(exc)}",
             "retrieval_available": False,
             "status": "indexing"
+        }
+
+
+def chunk_and_embed_node(state: AgentState) -> AgentState:
+    """
+    Stage 5: Chunk & Embed in Local Vector DB.
+    - If retrieval_available is True: chunks parsed sections with metadata (section, page)
+      and indexes them into local ChromaDB.
+    - If retrieval_available is False (scanned or failed PDF): sets empty chunks,
+      preserves fallback state, and routes smoothly to summarization.
+    """
+    paper = state.get("selected_paper")
+    paper_id = paper.get("arxiv_id", "default_paper") if paper else "default_paper"
+
+    # If parsing fell back to abstract-only, skip vector indexing gracefully
+    if not state.get("retrieval_available", False):
+        return {
+            "chunks": [],
+            "index_id": None,
+            "retrieval_available": False,
+            "status": "summarizing"
+        }
+
+    sections = state.get("parsed_sections", [])
+    if not sections:
+        return {
+            "chunks": [],
+            "index_id": None,
+            "retrieval_available": False,
+            "status": "summarizing"
+        }
+
+    # Build chunks with section and page metadata
+    chunks = build_chunks_from_sections(sections, paper_id=paper_id)
+
+    # Store into local ChromaDB
+    try:
+        index_id = index_paper_chunks(chunks, paper_id=paper_id)
+        return {
+            "chunks": chunks,
+            "index_id": index_id,
+            "retrieval_available": True,
+            "status": "summarizing",
+            "error_message": None
+        }
+    except Exception as exc:
+        # If ChromaDB fails for any reason, degrade gracefully without crashing
+        return {
+            "chunks": chunks,
+            "index_id": None,
+            "retrieval_available": False,
+            "fallback_reason": f"Vector indexing fallback: {str(exc)}",
+            "status": "summarizing"
         }

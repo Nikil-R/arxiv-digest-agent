@@ -59,9 +59,9 @@ def test_live_pdf_download_and_parse():
 
 
 def test_pipeline_graph_with_pdf_parsing():
-    """Verify the state graph executes through Query -> arXiv -> PDF Parsing."""
+    """Verify the state graph executes through Query -> arXiv -> PDF Parsing -> Indexing."""
     state = run_digest_pipeline("1706.03762")
-    assert state["status"] == "indexing"
+    assert state["status"] in ["indexing", "summarizing"]
     assert state["retrieval_available"] is True
     assert state["parsing_status"] == "success"
     assert state["pdf_path"] is not None
