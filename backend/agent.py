@@ -82,7 +82,9 @@ def run_digest_pipeline(
 
 
 def ask_question_state(state: AgentState, question: str) -> AgentState:
-    """Executes Stage 7: Grounded Question-Answering over the current paper state."""
+    """Executes Stage 7: Grounded Question-Answering preserving state."""
     state_copy = state.copy()
     state_copy["current_question"] = question.strip()
-    return qa_node(state_copy)
+    update = qa_node(state_copy)
+    state_copy.update(update)
+    return state_copy

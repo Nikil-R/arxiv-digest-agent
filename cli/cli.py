@@ -92,7 +92,12 @@ def main():
             print("[*] Retrieving evidence chunks and generating grounded response...")
             state = ask_question_state(state, user_question)
 
-            last_turn = state.get("qa_history", [])[-1]
+            qa_history = state.get("qa_history", [])
+            if not qa_history:
+                print(f"[-] Could not generate answer: {state.get('error_message')}")
+                continue
+
+            last_turn = qa_history[-1]
             print("\n" + "-" * 50 + " ANSWER " + "-" * 50)
             print(last_turn.get("answer"))
             print("-" * 108)
