@@ -1,0 +1,17 @@
+﻿# Core Dependencies
+pymupdf>=1.24.0
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+httpx>=0.27.0
+pydantic>=2.7.0
+python-dotenv>=1.0.0
+
+# LLM Providers (Free Tier / Multi-provider support)
+google-genai>=0.1.1
+
+# Rich CLI formatting
+rich>=13.7.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
