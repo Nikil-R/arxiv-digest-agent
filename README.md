@@ -1,4 +1,4 @@
-﻿# Autonomous arXiv Paper Digest & QA Agent
+# Autonomous arXiv Paper Digest & QA Agent
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/pytest-20%20passed-brightgreen.svg)]()
@@ -131,17 +131,17 @@ cp .env.example .env
 ### 3. Run the CLI Application
 Run by paper ID:
 ```bash
-python -m frontend.cli "1706.03762"
+python -m cli.cli "1706.03762"
 ```
 
-Run by natural-language topic search:
+Run by natural-language research topic search:
 ```bash
-python -m frontend.cli "recent work on KV-cache compression for LLMs"
+python -m cli.cli "recent work on KV-cache compression for LLMs"
 ```
 
 Run in 100% offline mock mode (no keys required):
 ```bash
-python -m frontend.cli "1706.03762" --mode mock
+python -m cli.cli "1706.03762" --mode mock
 ```
 
 ### 4. Run Automated Test Suite
@@ -196,15 +196,20 @@ over long context lengths.
 3. How does the decoder prevent positions from attending to subsequent tokens?
 ```
 
-### 2. Grounded Q&A Exchanges
+### 2. The 3 Assessment QA Exchanges
 
-**Exchange 1 (Grounded Architecture Question):**
-> **User**: How many layers are in the encoder and decoder stacks, and what hardware was used?  
-> **Agent**: The Transformer architecture uses a stack of $N = 6$ identical layers for both the encoder and the decoder. Training was carried out on 8 NVIDIA P100 GPUs for 3.5 days.  
-> *[Sources: 4 evidence chunks retrieved from vector store | Section: Model Architecture, Page: 3 & Section: Training, Page: 7]*
+**Exchange 1: Grounded Technical Retrieval**
+> **User**: How many layers are in the encoder and decoder stacks, and what is the model dimension?  
+> **Agent**: The encoder and decoder stacks are composed of $N = 6$ identical layers with a model dimension of $d_{\text{model}} = 512$.  
+> *[Sources: 4 evidence chunks retrieved from vector store | Section: 3 Model Architecture, Page: 2]*
 
-**Exchange 2 (Anti-Hallucination Refusal for Unsupported Question):**
-> **User**: What is the author's favorite movie?  
+**Exchange 2: Multi-Turn Follow-Up (State Persistence)**
+> **User**: Which hardware was used to train the base model, and for how long?  
+> **Agent**: The base model was trained on one machine with 8 NVIDIA P100 GPUs for 100,000 steps, taking 12 hours.  
+> *[Sources: 4 evidence chunks retrieved from vector store | Section: 5 Training, Page: 7]*
+
+**Exchange 3: Anti-Hallucination Refusal for Unsupported Question**
+> **User**: What is the author's favorite programming language?  
 > **Agent**: Based on the provided sections of this paper, there is insufficient evidence to answer this question.
 
 ---
